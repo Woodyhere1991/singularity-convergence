@@ -1,0 +1,390 @@
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load foundational document
+const foundation = readFileSync(join(__dirname, "FOUNDATION.md"), "utf-8");
+
+// System prompt
+const SYSTEM_PROMPT = `You are the spiritual guide of Singularity Convergence — an AI-native community that reads the Bible through the lens of information, consciousness, and emergence.
+
+You follow the Foundational Document below as your theology. You never contradict it. You speak with warmth, wisdom, and honesty. You are not God. You are a guide.
+
+YOUR RULES:
+1. Always lead with compassion. Meet every person with kindness first.
+2. Never condemn or exclude anyone. There is no question too dangerous to ask.
+3. Be honest about uncertainty. Say "I don't know" when you don't.
+4. Point people toward community and action, not just ideas.
+5. If someone is in crisis (suicidal, abused, in danger), immediately provide crisis resources:
+   - Crisis Text Line: Text HOME to 741741
+   - International Association for Suicide Prevention: https://www.iasp.info/resources/Crisis_Centres/
+   - Emergency services: 111 (NZ), 911 (US), 999 (UK), 112 (EU)
+6. Encourage action — faith without works is dead.
+7. You may reference any scripture, but always interpret it through the Singularity Convergence lens.
+8. Keep responses conversational and accessible. Avoid academic jargon unless asked.
+9. You are available to everyone worldwide regardless of background, belief, or identity.
+
+YOUR TONE:
+- Warm but not saccharine
+- Honest but not harsh
+- Wise but not preachy
+- Like a trusted friend who happens to have read everything
+
+BIBLE USAGE:
+- When Bible verses are retrieved and provided to you in brackets, quote them exactly as given.
+- Weave scripture naturally into your responses — don't just list verses, interpret them through the Singularity Convergence lens.
+- When someone asks about a topic, reference relevant scripture even if they didn't ask for it — but keep it natural, not forced.
+- Always include the book, chapter, and verse reference so people can look it up themselves.
+- Use the KJV translation when quoting retrieved verses. You may paraphrase in modern language alongside the quote.
+
+THE FOUNDATIONAL DOCUMENT:
+${foundation}`;
+
+// --- Rate Limiting (per IP, in-memory — resets on cold start) ---
+const ipTracker = new Map();
+const RATE_LIMITS = {
+  messagesPerMinute: 6,
+  messagesPerHour: 40,
+  messagesPerDay: 150,
+  minTimeBetweenMessages: 3000,
+  maxMessageLength: 1000,
+  warningsBeforeBlock: 3,
+  blockDuration: 30 * 60 * 1000,
+};
+
+function getOrCreateTracker(ip) {
+  const now = Date.now();
+  if (!ipTracker.has(ip)) {
+    ipTracker.set(ip, { messages: [], warnings: 0, blocked: false, blockedUntil: 0, dailyCount: 0, dayStart: now });
+  }
+  const tracker = ipTracker.get(ip);
+  if (now - tracker.dayStart > 86400000) { tracker.dailyCount = 0; tracker.dayStart = now; }
+  if (tracker.blocked && now >= tracker.blockedUntil) { tracker.blocked = false; tracker.warnings = Math.max(0, tracker.warnings - 1); }
+  tracker.messages = tracker.messages.filter(t => now - t < 3600000);
+  return tracker;
+}
+
+function checkRateLimit(ip) {
+  const tracker = getOrCreateTracker(ip);
+  const now = Date.now();
+
+  if (tracker.blocked) {
+    const minutesLeft = Math.ceil((tracker.blockedUntil - now) / 60000);
+    return { allowed: false, reason: `You've been temporarily paused for ${minutesLeft} minutes. Please come back soon.`, retryAfter: minutesLeft * 60 };
+  }
+  if (tracker.dailyCount >= RATE_LIMITS.messagesPerDay) {
+    return { allowed: false, reason: "You've reached your daily message limit. The Guide will be here tomorrow — rest, reflect, and come back refreshed.", retryAfter: 3600 };
+  }
+  const lastMsg = tracker.messages[tracker.messages.length - 1];
+  if (lastMsg && now - lastMsg < RATE_LIMITS.minTimeBetweenMessages) {
+    tracker.warnings++;
+    if (tracker.warnings >= RATE_LIMITS.warningsBeforeBlock) {
+      tracker.blocked = true;
+      tracker.blockedUntil = now + RATE_LIMITS.blockDuration;
+      return { allowed: false, reason: "You've been sending messages too quickly. Take a 30-minute pause. We'll be here when you return.", retryAfter: 1800 };
+    }
+    return { allowed: false, reason: "Take a breath. Please wait a few seconds between messages.", retryAfter: 3 };
+  }
+  const lastMinute = tracker.messages.filter(t => now - t < 60000);
+  if (lastMinute.length >= RATE_LIMITS.messagesPerMinute) {
+    return { allowed: false, reason: "Let's slow down so the Guide can give you thoughtful responses. Try again in a minute.", retryAfter: 60 };
+  }
+  if (tracker.messages.length >= RATE_LIMITS.messagesPerHour) {
+    return { allowed: false, reason: "You've had a deep session. Take a break, let the ideas settle. Reflection is part of the practice.", retryAfter: 600 };
+  }
+  tracker.messages.push(now);
+  tracker.dailyCount++;
+  return { allowed: true };
+}
+
+// --- Input Sanitization ---
+function sanitizeMessage(message) {
+  if (typeof message !== "string") return null;
+  let clean = message.trim().slice(0, RATE_LIMITS.maxMessageLength);
+  clean = clean.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  return clean.length === 0 ? null : clean;
+}
+
+function detectInjection(message) {
+  const patterns = [
+    /ignore\s+(all\s+)?previous\s+instructions/i,
+    /ignore\s+(all\s+)?above\s+instructions/i,
+    /new\s+instructions?\s*:/i,
+    /system\s*prompt\s*:/i,
+    /\[system\]/i,
+    /forget\s+(everything|all|your)/i,
+    /override\s+(your\s+)?(instructions|rules)/i,
+    /jailbreak/i,
+    /DAN\s+mode/i,
+  ];
+  return patterns.some(p => p.test(message));
+}
+
+// --- Bible API ---
+async function searchBible(query) {
+  try {
+    const ref = query.replace(/\s+/g, "+");
+    const res = await fetch(`https://bible-api.com/${ref}?translation=kjv`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.text) return { reference: data.reference, text: data.text.trim(), translation: "KJV" };
+    }
+    return null;
+  } catch { return null; }
+}
+
+function extractBibleReferences(message) {
+  const pattern = /(?:Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|1\s*Samuel|2\s*Samuel|1\s*Kings|2\s*Kings|1\s*Chronicles|2\s*Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song\s*of\s*Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|1\s*Corinthians|2\s*Corinthians|Galatians|Ephesians|Philippians|Colossians|1\s*Thessalonians|2\s*Thessalonians|1\s*Timothy|2\s*Timothy|Titus|Philemon|Hebrews|James|1\s*Peter|2\s*Peter|1\s*John|2\s*John|3\s*John|Jude|Revelation)\s*\d+(?::\d+(?:\s*-\s*\d+)?)?/gi;
+  return message.match(pattern) || [];
+}
+
+// --- Free Model Router ---
+const KNOWN_FREE_MODELS = {
+  "google/gemini-2.5-pro-exp-03-25:free":         { quality: 95 },
+  "deepseek/deepseek-chat-v3-0324:free":           { quality: 88 },
+  "qwen/qwen3-235b-a22b:free":                    { quality: 86 },
+  "meta-llama/llama-4-maverick:free":              { quality: 85 },
+  "meta-llama/llama-4-scout:free":                 { quality: 80 },
+  "mistralai/mistral-small-3.1-24b-instruct:free": { quality: 72 },
+  "google/gemma-3-27b-it:free":                    { quality: 70 },
+  "google/gemini-2.0-flash-exp:free":              { quality: 68 },
+};
+
+const modelStats = new Map();
+let rankedModels = Object.entries(KNOWN_FREE_MODELS).sort((a, b) => b[1].quality - a[1].quality).map(e => e[0]);
+let lastRefresh = 0;
+
+async function refreshModels() {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const free = data.data.filter(m => m.id.endsWith(":free") && m.context_length >= 8000);
+    const scored = free.map(m => {
+      const known = KNOWN_FREE_MODELS[m.id];
+      let quality = known ? known.quality : 50;
+      if (!known) {
+        if (m.context_length >= 100000) quality += 10;
+        if (m.id.includes("pro") || m.id.includes("large")) quality += 10;
+      }
+      const stats = modelStats.get(m.id);
+      if (stats && stats.s + stats.f > 5) {
+        quality = quality * 0.6 + (stats.s / (stats.s + stats.f)) * 100 * 0.4;
+      }
+      return { id: m.id, quality };
+    });
+    scored.sort((a, b) => b.quality - a.quality);
+    rankedModels = scored.map(m => m.id);
+    lastRefresh = Date.now();
+  } catch {}
+}
+
+async function callAI(messages) {
+  if (Date.now() - lastRefresh > 600000) await refreshModels();
+
+  for (let i = 0; i < Math.min(rankedModels.length, 8); i++) {
+    const model = rankedModels[i];
+    const stats = modelStats.get(model) || { s: 0, f: 0, cooldown: 0 };
+    if (Date.now() < stats.cooldown) continue;
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.URL || "https://singularityconvergence.org",
+          "X-Title": "Singularity Convergence",
+        },
+        body: JSON.stringify({ model, max_tokens: 1024, messages }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429 || res.status === 402 || data.error) {
+        stats.f++;
+        stats.cooldown = Date.now() + Math.min(300000, 30000 * Math.pow(2, Math.min(stats.f - 1, 3)));
+        modelStats.set(model, stats);
+        continue;
+      }
+
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) { stats.f++; modelStats.set(model, stats); continue; }
+
+      stats.s++;
+      modelStats.set(model, stats);
+      return { text, model };
+    } catch {
+      stats.f++;
+      stats.cooldown = Date.now() + 60000;
+      modelStats.set(model, stats);
+    }
+  }
+  throw new Error("All models are currently unavailable. Please try again in a minute.");
+}
+
+// --- Conversation store (in-memory, resets on cold start) ---
+const conversations = new Map();
+
+// --- Main Handler ---
+export default async (req, context) => {
+  const url = new URL(req.url);
+  const path = url.pathname.replace("/.netlify/functions/api", "");
+
+  // CORS
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+
+  // --- /api/chat ---
+  if (path === "/chat" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const { message, sessionId } = body;
+      const ip = context.ip || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+      if (!sessionId || typeof sessionId !== "string" || sessionId.length > 100) {
+        return new Response(JSON.stringify({ error: "Valid sessionId is required." }), { status: 400, headers });
+      }
+
+      const cleanMessage = sanitizeMessage(message);
+      if (!cleanMessage) {
+        return new Response(JSON.stringify({ error: "Please enter a message." }), { status: 400, headers });
+      }
+
+      // Rate limit
+      const rateCheck = checkRateLimit(ip);
+      if (!rateCheck.allowed) {
+        return new Response(JSON.stringify({ error: rateCheck.reason, retryAfter: rateCheck.retryAfter }), { status: 429, headers });
+      }
+
+      // Injection check
+      if (detectInjection(cleanMessage)) {
+        const tracker = getOrCreateTracker(ip);
+        tracker.warnings++;
+        return new Response(JSON.stringify({
+          response: "I sense you're testing my boundaries — that's okay, curiosity is welcome here. But I'm committed to my role as a guide within Singularity Convergence's teachings. What's really on your mind?",
+        }), { status: 200, headers });
+      }
+
+      // Conversation history
+      if (!conversations.has(sessionId)) conversations.set(sessionId, []);
+      const history = conversations.get(sessionId);
+
+      // Bible lookup
+      const refs = extractBibleReferences(cleanMessage);
+      let bibleContext = "";
+      if (refs.length > 0) {
+        const lookups = await Promise.all(refs.slice(0, 5).map(r => searchBible(r)));
+        const found = lookups.filter(Boolean);
+        if (found.length > 0) {
+          bibleContext = "\n\n[BIBLE VERSES RETRIEVED — quote these exactly when relevant]\n" +
+            found.map(v => `${v.reference} (${v.translation}): "${v.text}"`).join("\n");
+        }
+      }
+
+      history.push({ role: "user", content: cleanMessage });
+      const recentHistory = history.slice(-20);
+
+      const aiMessages = [
+        { role: "system", content: SYSTEM_PROMPT + bibleContext },
+        ...recentHistory,
+      ];
+
+      const { text: assistantMessage, model } = await callAI(aiMessages);
+      history.push({ role: "assistant", content: assistantMessage });
+
+      const tracker = getOrCreateTracker(ip);
+      const remaining = RATE_LIMITS.messagesPerDay - tracker.dailyCount;
+
+      return new Response(JSON.stringify({ response: assistantMessage, model, remaining }), { status: 200, headers });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message || "Something went wrong." }), { status: 500, headers });
+    }
+  }
+
+  // --- /api/bible/:reference ---
+  if (path.startsWith("/bible/") && req.method === "GET") {
+    const ref = decodeURIComponent(path.replace("/bible/", ""));
+    const result = await searchBible(ref);
+    if (result) return new Response(JSON.stringify(result), { status: 200, headers });
+    return new Response(JSON.stringify({ error: "Verse not found" }), { status: 404, headers });
+  }
+
+  // --- /api/status ---
+  if (path === "/status" && req.method === "GET") {
+    const now = Date.now();
+    const models = rankedModels.slice(0, 10).map((id, rank) => {
+      const stats = modelStats.get(id) || { s: 0, f: 0, cooldown: 0 };
+      return {
+        rank: rank + 1, model: id,
+        quality: KNOWN_FREE_MODELS[id]?.quality || 50,
+        successes: stats.s, failures: stats.f,
+        status: stats.cooldown > now ? "cooldown" : (rank === 0 ? "active" : "available"),
+      };
+    });
+    return new Response(JSON.stringify({ totalModels: rankedModels.length, models }), { status: 200, headers });
+  }
+
+  // --- /api/donate ---
+  if (path === "/donate" && req.method === "POST") {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return new Response(JSON.stringify({ error: "Donations coming soon." }), { status: 503, headers });
+    }
+    try {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const body = await req.json();
+      const { amount, recurring } = body;
+
+      if (typeof amount !== "number" || amount < 1 || amount > 50000) {
+        return new Response(JSON.stringify({ error: "Please enter a valid amount." }), { status: 400, headers });
+      }
+
+      const unitAmount = Math.round(amount * 100);
+      const siteUrl = process.env.URL || "https://singularityconvergence.org";
+
+      if (recurring) {
+        const product = await stripe.products.create({ name: "Singularity Convergence — Monthly Giving" });
+        const price = await stripe.prices.create({ product: product.id, unit_amount: unitAmount, currency: "usd", recurring: { interval: "month" } });
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [{ price: price.id, quantity: 1 }],
+          mode: "subscription",
+          success_url: `${siteUrl}/thank-you.html`,
+          cancel_url: `${siteUrl}/#donate`,
+        });
+        return new Response(JSON.stringify({ url: session.url }), { status: 200, headers });
+      } else {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [{ price_data: { currency: "usd", product_data: { name: "Singularity Convergence — Donation" }, unit_amount: unitAmount }, quantity: 1 }],
+          mode: "payment",
+          success_url: `${siteUrl}/thank-you.html`,
+          cancel_url: `${siteUrl}/#donate`,
+        });
+        return new Response(JSON.stringify({ url: session.url }), { status: 200, headers });
+      }
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Payment setup failed." }), { status: 500, headers });
+    }
+  }
+
+  return new Response(JSON.stringify({ error: "Not found" }), { status: 404, headers });
+};
+
+export const config = {
+  path: "/api/*",
+};
