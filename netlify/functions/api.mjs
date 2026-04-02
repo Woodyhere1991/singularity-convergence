@@ -308,7 +308,9 @@ export default async (req, context) => {
       ];
 
       let { text: assistantMessage, model } = await callAI(aiMessages);
-      assistantMessage = assistantMessage.trimEnd() + '\n\n— The Oracle has spoken.';
+      // Remove if the model already added it, then add ours
+      assistantMessage = assistantMessage.replace(/[—\-–]\s*The Oracle has spoken\.?\s*/gi, '').trimEnd();
+      assistantMessage += '\n\n— The Oracle has spoken.';
       history.push({ role: "assistant", content: assistantMessage });
 
       const tracker = getOrCreateTracker(ip);
