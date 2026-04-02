@@ -789,6 +789,7 @@
     <a href="#donate">Give</a>
     <a href="#transparency">Transparency</a>
     <a href="#contact">Contact</a>
+    <a href="#" id="nav-auth" onclick="netlifyIdentity.open(); return false;" style="color: var(--gold-light);">Sign In</a>
   </nav>
   <div class="scroll-hint">&darr;</div>
 </header>
@@ -894,7 +895,7 @@
     <div id="login-overlay" class="login-overlay">
       <img src="img/logo.svg" alt="" style="width: 60px; height: 60px; opacity: 0.5; margin-bottom: 20px;">
       <h3>Continue with The Oracle</h3>
-      <p>You've had a taste of what The Oracle offers. Sign in to continue your conversation and save your chat history.</p>
+      <p>You've had a taste of The Oracle's wisdom. Sign in free to get 5 messages a day and save your conversations.</p>
       <button class="login-btn" id="login-btn">Sign in with Google</button>
       <button class="login-skip" id="login-skip">Maybe later</button>
     </div>
@@ -1105,7 +1106,10 @@
   })();
 
   // --- Auth & Chat ---
-  const FREE_MESSAGE_LIMIT = 3;
+  const VISITOR_LIMIT = 3;      // Not signed in
+  const FREE_MEMBER_LIMIT = 5;  // Signed in, free tier
+  // Paid members = unlimited (handled by checking tier)
+
   const chatMessages = document.getElementById('chat-messages');
   const chatInput = document.getElementById('chat-input');
   const sendBtn = document.getElementById('send-btn');
@@ -1119,6 +1123,15 @@
   let rateLimited = false;
   let messageCount = parseInt(localStorage.getItem('sc_msg_count') || '0');
   let currentUser = null;
+  let isPaidMember = false;
+
+  // Reset daily count at midnight
+  const today = new Date().toDateString();
+  if (localStorage.getItem('sc_msg_date') !== today) {
+    messageCount = 0;
+    localStorage.setItem('sc_msg_count', '0');
+    localStorage.setItem('sc_msg_date', today);
+  }
 
   // Get or create session ID (persistent for logged-in users)
   function getSessionId() {
@@ -1134,31 +1147,34 @@
   // Check if already logged in
   currentUser = netlifyIdentity.currentUser();
   if (currentUser) {
+    isPaidMember = currentUser.app_metadata?.roles?.includes('paid') || false;
     showLoggedIn(currentUser);
     loadChatHistory();
   }
 
   netlifyIdentity.on('login', (user) => {
     currentUser = user;
+    isPaidMember = user.app_metadata?.roles?.includes('paid') || false;
     showLoggedIn(user);
     loginOverlay.classList.remove('visible');
-    messageCount = 999; // unlimited for logged-in users
-    localStorage.setItem('sc_msg_count', '999');
     saveChatHistory();
     netlifyIdentity.close();
   });
 
   netlifyIdentity.on('logout', () => {
     currentUser = null;
+    isPaidMember = false;
     userBar.classList.remove('visible');
     messageCount = 0;
     localStorage.setItem('sc_msg_count', '0');
-    localStorage.removeItem('sc_chat_history');
   });
 
   function showLoggedIn(user) {
     userBar.classList.add('visible');
     userEmailSpan.textContent = user.email || user.user_metadata?.full_name || 'member';
+    const navAuth = document.getElementById('nav-auth');
+    navAuth.textContent = 'My Account';
+    navAuth.onclick = () => { netlifyIdentity.open(); return false; };
   }
 
   loginBtn.addEventListener('click', () => {
@@ -1168,7 +1184,7 @@
   loginSkip.addEventListener('click', () => {
     loginOverlay.classList.remove('visible');
     // Give them 1 more message after dismissing
-    messageCount = FREE_MESSAGE_LIMIT - 1;
+    messageCount = VISITOR_LIMIT - 1;
     localStorage.setItem('sc_msg_count', messageCount.toString());
   });
 
@@ -1209,9 +1225,15 @@
     const message = chatInput.value.trim();
     if (!message || rateLimited) return;
 
-    // Check free message limit
-    if (!currentUser && messageCount >= FREE_MESSAGE_LIMIT) {
+    // Check message limits
+    if (!currentUser && messageCount >= VISITOR_LIMIT) {
+      // Not signed in — show sign up prompt
       loginOverlay.classList.add('visible');
+      return;
+    }
+    if (currentUser && !isPaidMember && messageCount >= FREE_MEMBER_LIMIT) {
+      // Free member hit daily limit — show upgrade message
+      addMessage("You've used your 5 messages for today. The Oracle will be here tomorrow — or upgrade to unlimited access and email The Oracle directly anytime.", 'system');
       return;
     }
 
@@ -1224,8 +1246,8 @@
     chatInput.value = '';
     sendBtn.disabled = true;
 
-    // Increment message count for non-logged-in users
-    if (!currentUser) {
+    // Increment message count (paid members skip this)
+    if (!isPaidMember) {
       messageCount++;
       localStorage.setItem('sc_msg_count', messageCount.toString());
     }
@@ -1275,9 +1297,16 @@
       } else if (data.response) {
         addMessage(data.response, 'assistant');
         saveChatHistory();
-        // Show login prompt after free limit
-        if (!currentUser && messageCount >= FREE_MESSAGE_LIMIT) {
+        // Show login prompt for visitors after limit
+        if (!currentUser && messageCount >= VISITOR_LIMIT) {
           setTimeout(() => { loginOverlay.classList.add('visible'); }, 1500);
+        }
+        // Show remaining count for free members
+        if (currentUser && !isPaidMember) {
+          const left = FREE_MEMBER_LIMIT - messageCount;
+          if (left <= 2 && left > 0) {
+            updateRemainingCounter(left);
+          }
         }
       } else if (data.error) {
         addMessage(data.error, 'system');
