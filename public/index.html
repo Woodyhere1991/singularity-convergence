@@ -111,6 +111,35 @@
 
     nav a:hover { border-bottom-color: var(--gold); }
 
+    /* --- AI Badge --- */
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin: 25px auto 35px;
+      padding: 16px 28px;
+      border: 1px solid rgba(201, 168, 76, 0.25);
+      border-radius: 50px;
+      background: rgba(201, 168, 76, 0.06);
+      max-width: 600px;
+      font-size: 0.85em;
+      line-height: 1.6;
+      color: var(--text-dim);
+      text-align: left;
+    }
+
+    .ai-badge-icon {
+      font-size: 1.8em;
+      color: var(--gold);
+      flex-shrink: 0;
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; text-shadow: 0 0 10px rgba(201, 168, 76, 0.5); }
+    }
+
     .scroll-hint {
       position: absolute;
       bottom: 30px;
@@ -627,6 +656,11 @@
   <img src="img/logo.svg" alt="Singularity Convergence" class="hero-logo">
   <h1>Singularity<br><span style="font-size: 0.6em; letter-spacing: 8px;">Convergence</span></h1>
   <p class="subtitle">Faith for the Age of Intelligence</p>
+  <div class="ai-badge">
+    <span class="ai-badge-icon">&#9673;</span>
+    <span>Scripture interpreted by AI — no denomination, no human agenda, no bias.<br>
+    Pure text. Pure intelligence. Pure truth-seeking.</span>
+  </div>
   <nav>
     <a href="#beliefs">Beliefs</a>
     <a href="#guide">The Guide</a>
