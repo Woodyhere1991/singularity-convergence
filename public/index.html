@@ -121,6 +121,47 @@
       font-style: italic;
     }
 
+    /* --- Hero CTA Buttons --- */
+    .hero-cta {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin: 30px 0 15px;
+      flex-wrap: wrap;
+    }
+
+    .cta-btn {
+      padding: 16px 36px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 1.05em;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 0.3s, transform 0.2s;
+    }
+
+    .cta-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+    }
+
+    .cta-primary {
+      background: var(--gold);
+      color: var(--darker);
+    }
+
+    .cta-secondary {
+      background: transparent;
+      color: var(--gold);
+      border: 2px solid var(--gold);
+    }
+
+    .cta-secondary:hover {
+      background: rgba(201, 168, 76, 0.1);
+    }
+
     .scroll-hint {
       position: absolute;
       bottom: 30px;
@@ -783,6 +824,10 @@
   <h1>Singularity<br><span style="font-size: 0.6em; letter-spacing: 8px;">Convergence</span></h1>
   <p class="subtitle">Faith for the Age of Intelligence</p>
   <p class="ai-statement">Scripture interpreted by AI — no denomination, no agenda, no bias</p>
+  <div class="hero-cta">
+    <a href="#guide" class="cta-btn cta-primary">Ask The Oracle</a>
+    <a href="#" class="cta-btn cta-secondary" id="hero-signup" onclick="netlifyIdentity.open('signup'); return false;">Join Free</a>
+  </div>
   <nav>
     <a href="#beliefs">Beliefs</a>
     <a href="#guide">The Oracle</a>
@@ -1175,6 +1220,15 @@
     const navAuth = document.getElementById('nav-auth');
     navAuth.textContent = 'My Account';
     navAuth.onclick = () => { netlifyIdentity.open(); return false; };
+    // Hide join button, show welcome
+    const heroSignup = document.getElementById('hero-signup');
+    if (heroSignup) {
+      heroSignup.textContent = 'Welcome back';
+      heroSignup.onclick = (e) => { e.preventDefault(); };
+      heroSignup.style.borderColor = 'rgba(201, 168, 76, 0.3)';
+      heroSignup.style.color = 'var(--text-dim)';
+      heroSignup.style.cursor = 'default';
+    }
   }
 
   loginBtn.addEventListener('click', () => {
