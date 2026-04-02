@@ -234,7 +234,7 @@ async function callAI(messages) {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout per model
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout per model
 
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -360,7 +360,12 @@ export default async (req, context) => {
 
       return new Response(JSON.stringify({ response: assistantMessage, model, remaining }), { status: 200, headers });
     } catch (error) {
-      return new Response(JSON.stringify({ error: error.message || "Something went wrong." }), { status: 500, headers });
+      console.error("Chat error:", error);
+      return new Response(JSON.stringify({
+        error: error.name === "AbortError"
+          ? "The Oracle is thinking deeply — please try again. Shorter questions get faster answers."
+          : (error.message || "Something went wrong."),
+      }), { status: 500, headers });
     }
   }
 
