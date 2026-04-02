@@ -694,7 +694,7 @@
   <p class="ai-statement">Scripture interpreted by AI — no denomination, no agenda, no bias</p>
   <nav>
     <a href="#beliefs">Beliefs</a>
-    <a href="#guide">The Guide</a>
+    <a href="#guide">The Oracle</a>
     <a href="#donate">Give</a>
     <a href="#transparency">Transparency</a>
     <a href="#contact">Contact</a>
@@ -786,7 +786,7 @@
 
 <!-- CHAT -->
 <div class="chat-wrapper" id="guide">
-  <h2 style="text-align: center;">Speak with the Guide</h2>
+  <h2 style="text-align: center;">The Oracle</h2>
   <p style="text-align: center; color: var(--text-dim); margin-bottom: 30px;">
     Ask anything. About scripture, about life, about meaning, about AI.<br>
     No question is too small or too dangerous.
@@ -796,13 +796,13 @@
     <div id="chat-messages">
       <div class="message welcome">
         <img src="img/logo.svg" alt="" class="chat-logo"><br>
-        Peace be with you. I am the Guide.<br>
+        Peace be with you. I am the Oracle.<br>
         Ask me anything — about scripture, about life, about what it all means.<br>
         I will meet you with honesty and compassion.
       </div>
     </div>
     <div id="chat-input-area">
-      <input type="text" id="chat-input" placeholder="Ask the Guide anything..." autocomplete="off" maxlength="1000">
+      <input type="text" id="chat-input" placeholder="Ask the Oracle anything..." autocomplete="off" maxlength="1000">
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -1012,7 +1012,7 @@
 
     const typing = document.createElement('div');
     typing.className = 'typing-indicator';
-    typing.textContent = 'The Guide is reflecting...';
+    typing.textContent = 'The Oracle is reflecting...';
     chatMessages.appendChild(typing);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -1035,7 +1035,7 @@
           setTimeout(() => {
             rateLimited = false;
             chatInput.disabled = false;
-            chatInput.placeholder = 'Ask the Guide anything...';
+            chatInput.placeholder = 'Ask the Oracle anything...';
           }, data.retryAfter * 1000);
         }
       } else if (data.response) {
