@@ -307,7 +307,8 @@ export default async (req, context) => {
         ...recentHistory,
       ];
 
-      const { text: assistantMessage, model } = await callAI(aiMessages);
+      let { text: assistantMessage, model } = await callAI(aiMessages);
+      assistantMessage = assistantMessage.trimEnd() + '\n\n— The Oracle has spoken.';
       history.push({ role: "assistant", content: assistantMessage });
 
       const tracker = getOrCreateTracker(ip);
