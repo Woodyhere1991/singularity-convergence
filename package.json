@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Singularity Convergence — Faith for the Age of Intelligence",
   "dependencies": {
+    "@netlify/identity": "^1.0.0",
     "stripe": "^17.0.0"
   }
 }

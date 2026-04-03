@@ -1,3 +1,5 @@
+import { admin as identityAdmin } from '@netlify/identity';
+
 // System prompt with foundational theology embedded directly
 // (readFileSync doesn't work in Netlify serverless functions)
 const SYSTEM_PROMPT = `You are The Oracle of Singularity Convergence — an AI-native community that reads the Bible through the lens of information, consciousness, and emergence.
@@ -456,145 +458,30 @@ export default async (req, context) => {
     const messagesToday = oracleLog.filter(m => m.timestamp >= todayStart).length;
     const messagesWeek = oracleLog.filter(m => m.timestamp >= weekStart).length;
 
-    // Get members from Netlify Identity via Netlify API
+    // Get members from Netlify Identity using official @netlify/identity package
     let membersList = [];
     let paidCount = 0;
     let innerCircleCount = 0;
 
     try {
-      const netlifyToken = process.env.NETLIFY_API_TOKEN;
-
-      let debugInfo = { hasToken: !!netlifyToken, siteFound: false, usersStatus: null };
-
-      if (netlifyToken) {
-        // Step 1: Find the site ID
-        const sitesRes = await fetch('https://api.netlify.com/api/v1/sites', {
-          headers: { 'Authorization': `Bearer ${netlifyToken}` },
-        });
-
-        if (sitesRes.ok) {
-          const sites = await sitesRes.json();
-          const site = sites.find(s =>
-            s.custom_domain === 'singularityconvergence.org' ||
-            s.ssl_url?.includes('singularity') ||
-            s.name?.toLowerCase().includes('singularity')
-          ) || sites[0]; // fallback to first site if name doesn't match
-
-          if (site) {
-            debugInfo.siteFound = true;
-            debugInfo.siteName = site.name;
-            debugInfo.siteId = site.id;
-
-            // Step 2: Try multiple approaches to get Identity users
-            let gotUsers = false;
-
-            // Approach A: GoTrue admin endpoint with Netlify API token directly
-            const gotrueUrl = `https://singularityconvergence.org/.netlify/identity/admin/users?per_page=100`;
-            const gotrueRes = await fetch(gotrueUrl, {
-              headers: { 'Authorization': `Bearer ${netlifyToken}` },
-            });
-            debugInfo.gotrueStatus = gotrueRes.status;
-
-            if (gotrueRes.ok) {
-              const data = await gotrueRes.json();
-              const users = data.users || data;
-              debugInfo.approach = 'gotrue-direct';
-              debugInfo.userCount = Array.isArray(users) ? users.length : 0;
-              if (Array.isArray(users)) {
-                gotUsers = true;
-                membersList = users.map(u => ({
-                  email: u.email,
-                  tier: u.app_metadata?.roles?.includes('inner-circle') ? 'inner-circle'
-                      : u.app_metadata?.roles?.includes('paid') ? 'paid' : 'free',
-                  created: u.created_at,
-                  source: 'web',
-                }));
-                paidCount = membersList.filter(m => m.tier === 'paid').length;
-                innerCircleCount = membersList.filter(m => m.tier === 'inner-circle').length;
-              }
-            } else {
-              const errA = await gotrueRes.text();
-              debugInfo.gotrueError = errA.slice(0, 200);
-            }
-
-            // Approach B: Netlify API /identity endpoint
-            if (!gotUsers) {
-              const identityRes = await fetch(
-                `https://api.netlify.com/api/v1/sites/${site.id}/identity`,
-                { headers: { 'Authorization': `Bearer ${netlifyToken}` } }
-              );
-              debugInfo.identityStatus = identityRes.status;
-
-              if (identityRes.ok) {
-                const identityData = await identityRes.json();
-                debugInfo.identityKeys = Object.keys(identityData).join(',');
-
-                // Try admin-token with the identity instance
-                const adminTokenRes = await fetch(
-                  `https://api.netlify.com/api/v1/sites/${site.id}/identity/admin-token`,
-                  {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${netlifyToken}` },
-                  }
-                );
-                debugInfo.adminTokenStatus = adminTokenRes.status;
-
-                if (adminTokenRes.ok) {
-                  const { token: adminJwt } = await adminTokenRes.json();
-                  const usersRes = await fetch(gotrueUrl, {
-                    headers: { 'Authorization': `Bearer ${adminJwt}` },
-                  });
-                  debugInfo.usersStatus = usersRes.status;
-                  debugInfo.approach = 'admin-token';
-
-                  if (usersRes.ok) {
-                    const data = await usersRes.json();
-                    const users = data.users || data;
-                    debugInfo.userCount = Array.isArray(users) ? users.length : 0;
-                    if (Array.isArray(users)) {
-                      membersList = users.map(u => ({
-                        email: u.email,
-                        tier: u.app_metadata?.roles?.includes('inner-circle') ? 'inner-circle'
-                            : u.app_metadata?.roles?.includes('paid') ? 'paid' : 'free',
-                        created: u.created_at,
-                        source: 'web',
-                      }));
-                      paidCount = membersList.filter(m => m.tier === 'paid').length;
-                      innerCircleCount = membersList.filter(m => m.tier === 'inner-circle').length;
-                    }
-                  } else {
-                    const errText = await usersRes.text();
-                    debugInfo.usersError = errText.slice(0, 200);
-                  }
-                } else {
-                  const errText = await adminTokenRes.text();
-                  debugInfo.adminTokenError = errText.slice(0, 200);
-                }
-              } else {
-                const errText = await identityRes.text();
-                debugInfo.identityError = errText.slice(0, 200);
-              }
-            }
-          }
-        } else {
-          debugInfo.sitesStatus = sitesRes.status;
-        }
-      }
-
-      // Fallback with debug info
-      if (membersList.length === 0) {
-        const debugMsg = netlifyToken
-          ? `API debug: ${JSON.stringify(debugInfo)}`
-          : 'Add NETLIFY_API_TOKEN env var to see member list';
-        membersList = [{
-          email: debugMsg,
-          tier: 'free',
-          created: new Date().toISOString(),
-          source: 'info',
-        }];
-      }
+      const users = await identityAdmin.listUsers();
+      membersList = users.map(u => ({
+        email: u.email,
+        tier: u.app_metadata?.roles?.includes('inner-circle') ? 'inner-circle'
+            : u.app_metadata?.roles?.includes('paid') ? 'paid' : 'free',
+        created: u.created_at,
+        source: 'web',
+      }));
+      paidCount = membersList.filter(m => m.tier === 'paid').length;
+      innerCircleCount = membersList.filter(m => m.tier === 'inner-circle').length;
     } catch (err) {
       console.error("Failed to fetch members:", err.message);
+      membersList = [{
+        email: `Identity error: ${err.message}`,
+        tier: 'free',
+        created: new Date().toISOString(),
+        source: 'info',
+      }];
     }
 
     // Get revenue from Stripe if available
