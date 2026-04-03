@@ -1478,14 +1478,17 @@
     userBar.classList.remove('visible');
     messageCount = 0;
     localStorage.setItem('sc_msg_count', '0');
+    const navAuth = document.getElementById('nav-auth');
+    navAuth.textContent = 'Sign In';
+    navAuth.onclick = (e) => { e.preventDefault(); netlifyIdentity.open(); return false; };
   });
 
   function showLoggedIn(user) {
     userBar.classList.add('visible');
     userEmailSpan.textContent = user.email || user.user_metadata?.full_name || 'member';
     const navAuth = document.getElementById('nav-auth');
-    navAuth.textContent = 'My Account';
-    navAuth.onclick = () => { netlifyIdentity.open(); return false; };
+    navAuth.textContent = 'Sign Out';
+    navAuth.onclick = (e) => { e.preventDefault(); netlifyIdentity.logout(); return false; };
     // Hide join button, show welcome
     const heroSignup = document.getElementById('hero-signup');
     if (heroSignup) {
