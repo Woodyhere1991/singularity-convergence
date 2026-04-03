@@ -456,22 +456,58 @@ export default async (req, context) => {
     const messagesToday = oracleLog.filter(m => m.timestamp >= todayStart).length;
     const messagesWeek = oracleLog.filter(m => m.timestamp >= weekStart).length;
 
-    // Get members from Netlify Identity admin API
+    // Get members from Netlify Identity GoTrue admin API
     let membersList = [];
     let paidCount = 0;
     let innerCircleCount = 0;
 
     try {
+      // The GoTrue admin API uses the site's Identity URL with an admin token
+      // The Identity URL is the site URL + /.netlify/identity
       const siteUrl = process.env.URL || "https://singularityconvergence.org";
-      // Use Netlify's internal identity admin endpoint with the site's API token
-      const identityEndpoint = `${siteUrl}/.netlify/identity/admin/users?per_page=100`;
+      const identityUrl = `${siteUrl}/.netlify/identity`;
 
-      // Try using the NETLIFY_API_TOKEN or the built-in identity context
-      const apiToken = process.env.NETLIFY_API_TOKEN || process.env.IDENTITY_TOKEN;
+      // First, get an admin token using the Identity admin endpoint
+      // Netlify provides IDENTITY_TOKEN env var automatically in some setups,
+      // otherwise we use the NETLIFY_API_TOKEN to request one
+      let adminJwt = null;
 
-      if (apiToken) {
-        const res = await fetch(identityEndpoint, {
-          headers: { 'Authorization': `Bearer ${apiToken}` },
+      // Method 1: Use IDENTITY_ADMIN_TOKEN if set directly
+      if (process.env.IDENTITY_ADMIN_TOKEN) {
+        adminJwt = process.env.IDENTITY_ADMIN_TOKEN;
+      }
+
+      // Method 2: Try the Netlify API to get a GoTrue admin token
+      if (!adminJwt && process.env.NETLIFY_API_TOKEN) {
+        try {
+          // Get site ID first
+          const sitesRes = await fetch('https://api.netlify.com/api/v1/sites', {
+            headers: { 'Authorization': `Bearer ${process.env.NETLIFY_API_TOKEN}` },
+          });
+          if (sitesRes.ok) {
+            const sites = await sitesRes.json();
+            const site = sites.find(s => s.custom_domain === 'singularityconvergence.org' || s.default_domain?.includes('singularity'));
+            if (site) {
+              // Get Identity admin token via Netlify API
+              const tokenRes = await fetch(`https://api.netlify.com/api/v1/sites/${site.id}/identity/admin-token`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.NETLIFY_API_TOKEN}` },
+              });
+              if (tokenRes.ok) {
+                const tokenData = await tokenRes.json();
+                adminJwt = tokenData.token;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to get identity admin token:", e.message);
+        }
+      }
+
+      // Use the admin JWT to list users
+      if (adminJwt) {
+        const res = await fetch(`${identityUrl}/admin/users?per_page=100`, {
+          headers: { 'Authorization': `Bearer ${adminJwt}` },
         });
         if (res.ok) {
           const data = await res.json();
@@ -487,12 +523,11 @@ export default async (req, context) => {
         }
       }
 
-      // Fallback: if no API token, show tracked sessions as a proxy
+      // Fallback message if we couldn't get members
       if (membersList.length === 0) {
-        // Count unique user sessions from the Oracle log
-        const uniqueSessions = new Set(oracleLog.filter(m => m.sessionId?.startsWith('user_')).map(m => m.sessionId));
+        const uniqueUsers = new Set(oracleLog.filter(m => m.sessionId?.startsWith('user_')).map(m => m.sessionId));
         membersList = [{
-          email: '(Identity API not connected — see setup below)',
+          email: `${uniqueUsers.size} logged-in users detected in Oracle log (Identity admin API connecting...)`,
           tier: 'free',
           created: new Date().toISOString(),
           source: 'info',
