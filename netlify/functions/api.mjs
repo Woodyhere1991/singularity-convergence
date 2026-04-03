@@ -542,11 +542,11 @@ export default async (req, context) => {
   if (path === "/admin/remove-member" && req.method === "POST") {
     try {
       const body = await req.json();
-      const { email, userId, password } = body;
-
-      if (password !== process.env.ADMIN_PASSWORD) {
+      if (!verifyAdmin(req)) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers });
       }
+
+      const { email, userId } = body;
 
       if (!email && !userId) {
         return new Response(JSON.stringify({ error: "Email or userId required" }), { status: 400, headers });
