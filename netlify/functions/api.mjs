@@ -250,8 +250,9 @@ let adminToken = null;
 
 function verifyAdmin(req) {
   const auth = req.headers.get('authorization');
-  if (!auth || !adminToken) return false;
-  return auth === `Bearer ${adminToken}`;
+  if (!auth) return false;
+  const token = auth.replace('Bearer ', '');
+  return token === adminToken || token === process.env.ADMIN_PASSWORD;
 }
 
 // --- Main Handler ---
@@ -435,8 +436,8 @@ export default async (req, context) => {
       }
 
       if (password === adminPassword) {
-        adminToken = generateToken();
-        return new Response(JSON.stringify({ success: true, token: adminToken }), { status: 200, headers });
+        adminToken = password;
+        return new Response(JSON.stringify({ success: true, token: password }), { status: 200, headers });
       }
 
       return new Response(JSON.stringify({ success: false }), { status: 401, headers });
