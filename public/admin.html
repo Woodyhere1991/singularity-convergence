@@ -584,6 +584,16 @@
   async function removeMember(email, userId) {
     if (!confirm(`Remove ${email}? This will delete them from Identity and MailerLite.`)) return;
     try {
+      // Immediately remove the row from the table for instant feedback
+      const rows = document.querySelectorAll('#members-table tr');
+      for (const row of rows) {
+        if (row.textContent.includes(email)) {
+          row.style.opacity = '0.3';
+          row.querySelector('button').disabled = true;
+          row.querySelector('button').textContent = 'Removing...';
+        }
+      }
+
       const res = await fetch(`/api/admin/remove-member`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
@@ -591,9 +601,27 @@
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Removed ${email}. ${data.details || ''}`);
-        setTimeout(() => refreshData(), 2000);
+        // Remove the row immediately
+        for (const row of rows) {
+          if (row.textContent.includes(email)) {
+            row.remove();
+          }
+        }
+        // Update the member count stat
+        const countEl = document.getElementById('stat-members');
+        const current = parseInt(countEl.textContent) || 0;
+        if (current > 0) countEl.textContent = current - 1;
+        // Refresh full data after a delay to sync everything
+        setTimeout(() => refreshData(), 3000);
       } else {
+        // Restore the row if removal failed
+        for (const row of rows) {
+          if (row.textContent.includes(email)) {
+            row.style.opacity = '1';
+            const btn = row.querySelector('button');
+            if (btn) { btn.disabled = false; btn.textContent = 'Remove'; }
+          }
+        }
         alert(`Error: ${data.error}`);
       }
     } catch (err) {
