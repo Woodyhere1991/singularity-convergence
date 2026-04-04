@@ -2,20 +2,60 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Singularity Convergence — The Bible has the answers. We just removed the agenda. Ask The Oracle any life question and get the Bible parable and hidden lesson everyone else missed. No church. No denomination. No judgement.">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
   <meta name="theme-color" content="#0a0a0f">
+  <link rel="canonical" href="https://singularityconvergence.org/">
   <meta property="og:title" content="Singularity Convergence — The Bible Has The Answers. We Just Removed The Agenda.">
   <meta property="og:description" content="Ask The Oracle any life question. Get the Bible parable and the lesson everyone else missed. No church. No denomination. No judgement.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://singularityconvergence.org">
-  <meta property="og:image" content="https://singularityconvergence.org/img/logo.svg">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://singularityconvergence.org/img/og-image.svg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="The Bible Has The Answers. We Just Removed The Agenda.">
   <meta name="twitter:description" content="Ask an AI the questions you can't ask at church. No denomination. No judgement. No agenda.">
+  <meta name="twitter:image" content="https://singularityconvergence.org/img/og-image.svg">
+  <meta name="twitter:image:alt" content="Singularity Convergence — AI-powered Bible wisdom">
   <link rel="icon" href="img/logo.svg" type="image/svg+xml">
   <title>Singularity Convergence — The Bible Has The Answers. We Just Removed The Agenda.</title>
-  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "Singularity Convergence",
+        "url": "https://singularityconvergence.org",
+        "logo": "https://singularityconvergence.org/img/logo.svg",
+        "description": "An AI-powered spiritual community that interprets the Bible without denomination, agenda, or bias."
+      },
+      {
+        "@type": "WebSite",
+        "url": "https://singularityconvergence.org",
+        "name": "Singularity Convergence",
+        "description": "The Bible has the answers. We just removed the agenda. Ask The Oracle any life question."
+      },
+      {
+        "@type": "WebApplication",
+        "name": "The Oracle",
+        "url": "https://singularityconvergence.org/#guide",
+        "applicationCategory": "ReligiousOrganization",
+        "description": "AI chatbot that answers life questions using Bible parables and reveals the hidden lessons most people miss.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free tier with 3 messages. Sign up for 5/day."
+        }
+      }
+    ]
+  }
+  </script>
+  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js" async></script>
   <style>
     :root {
       --gold: #c9a84c;
@@ -1006,6 +1046,7 @@
   <canvas id="starfield"></canvas>
 </div>
 
+<main>
 <!-- HERO -->
 <header>
   <img src="img/logo.svg" alt="Singularity Convergence" class="hero-logo">
@@ -1016,7 +1057,7 @@
     <a href="#guide" class="cta-btn cta-primary">Ask The Oracle</a>
     <a href="#" class="cta-btn cta-secondary" id="hero-signup" onclick="netlifyIdentity.open('signup'); return false;">Join Free</a>
   </div>
-  <button class="menu-toggle" id="menu-toggle">Menu</button>
+  <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu">Menu</button>
   <nav id="main-nav">
     <a href="#beliefs">Beliefs</a>
     <a href="#prime-directive">Prime Directive</a>
@@ -1065,7 +1106,7 @@
   <div id="chat-section" style="position: relative;">
     <!-- Login overlay — shown after 3 free messages -->
     <div id="login-overlay" class="login-overlay">
-      <img src="img/logo.svg" alt="" style="width: 60px; height: 60px; opacity: 0.5; margin-bottom: 20px;">
+      <img src="img/logo.svg" alt="" role="presentation" style="width: 60px; height: 60px; opacity: 0.5; margin-bottom: 20px;">
       <h3>Continue with The Oracle</h3>
       <p>You've had a taste of The Oracle's wisdom. Sign in free to get 5 messages a day and save your conversations.</p>
       <button class="login-btn" id="login-btn">Sign in with Google</button>
@@ -1080,14 +1121,14 @@
 
     <div id="chat-messages">
       <div class="message welcome">
-        <img src="img/logo.svg" alt="" class="chat-logo"><br>
+        <img src="img/logo.svg" alt="" role="presentation" class="chat-logo"><br>
         Peace be with you. I am the Oracle.<br>
         Ask me anything — about scripture, about life, about what it all means.<br>
         I will meet you with honesty and compassion.
       </div>
     </div>
     <div id="chat-input-area">
-      <input type="text" id="chat-input" placeholder="Ask the Oracle anything..." autocomplete="off" maxlength="1000">
+      <input type="text" id="chat-input" placeholder="Ask the Oracle anything..." autocomplete="off" maxlength="1000" aria-label="Ask the Oracle a question">
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -1334,6 +1375,7 @@
   </form>
 </section>
 
+</main>
 <!-- FOOTER -->
 <footer>
   <img src="img/logo.svg" alt="Singularity Convergence">
@@ -1342,6 +1384,11 @@
     <a href="#guide">Speak with The Oracle</a> &nbsp;&middot;&nbsp;
     <a href="FOUNDATION.md" target="_blank">Read the Foundational Document</a>
   </p>
+  <p style="margin-top: 10px; font-size: 14px;">
+    <a href="/privacy.html">Privacy Policy</a> &nbsp;&middot;&nbsp;
+    <a href="/terms.html">Terms of Service</a> &nbsp;&middot;&nbsp;
+    <a href="/disclaimer.html">Disclaimer</a>
+  </p>
   <p style="margin-top: 30px; font-style: italic; max-width: 500px; margin-left: auto; margin-right: auto;">
     "And now these three remain: faith, hope, and love. But the greatest of these is love."<br>
     — 1 Corinthians 13:13
@@ -1349,7 +1396,7 @@
 </footer>
 
 <!-- Scroll to top button -->
-<button class="scroll-top" id="scroll-top" title="Back to top">&uarr;</button>
+<button class="scroll-top" id="scroll-top" title="Back to top" aria-label="Scroll to top">&uarr;</button>
 
 <script>
   // --- Animated Star Field ---
@@ -1473,7 +1520,7 @@
     navAuth.onclick = (e) => { e.preventDefault(); netlifyIdentity.open(); return false; };
     // Clear chat messages and reset to welcome
     chatMessages.innerHTML = `<div class="message welcome">
-      <img src="img/logo.svg" alt="" class="chat-logo"><br>
+      <img src="img/logo.svg" alt="" role="presentation" class="chat-logo"><br>
       Peace be with you. I am the Oracle.<br>
       Ask me anything — about scripture, about life, about what it all means.<br>
       I will meet you with honesty and compassion.
@@ -1489,7 +1536,7 @@
       e.preventDefault();
       netlifyIdentity.logout();
       chatMessages.innerHTML = `<div class="message welcome">
-        <img src="img/logo.svg" alt="" class="chat-logo"><br>
+        <img src="img/logo.svg" alt="" role="presentation" class="chat-logo"><br>
         Peace be with you. I am the Oracle.<br>
         Ask me anything — about scripture, about life, about what it all means.<br>
         I will meet you with honesty and compassion.
@@ -1525,7 +1572,7 @@
     netlifyIdentity.logout();
     // Clear chat immediately in case logout event is delayed
     chatMessages.innerHTML = `<div class="message welcome">
-      <img src="img/logo.svg" alt="" class="chat-logo"><br>
+      <img src="img/logo.svg" alt="" role="presentation" class="chat-logo"><br>
       Peace be with you. I am the Oracle.<br>
       Ask me anything — about scripture, about life, about what it all means.<br>
       I will meet you with honesty and compassion.
