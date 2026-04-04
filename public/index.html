@@ -1485,7 +1485,20 @@
     userEmailSpan.textContent = user.email || user.user_metadata?.full_name || 'member';
     const navAuth = document.getElementById('nav-auth');
     navAuth.textContent = 'Sign Out';
-    navAuth.onclick = (e) => { e.preventDefault(); netlifyIdentity.logout(); return false; };
+    navAuth.onclick = (e) => {
+      e.preventDefault();
+      netlifyIdentity.logout();
+      chatMessages.innerHTML = `<div class="message welcome">
+        <img src="img/logo.svg" alt="" class="chat-logo"><br>
+        Peace be with you. I am the Oracle.<br>
+        Ask me anything — about scripture, about life, about what it all means.<br>
+        I will meet you with honesty and compassion.
+      </div>`;
+      localStorage.removeItem('sc_chat_history');
+      messageCount = 0;
+      localStorage.setItem('sc_msg_count', '0');
+      return false;
+    };
     // Hide join button, show welcome
     const heroSignup = document.getElementById('hero-signup');
     if (heroSignup) {
@@ -1510,6 +1523,16 @@
 
   logoutBtn.addEventListener('click', () => {
     netlifyIdentity.logout();
+    // Clear chat immediately in case logout event is delayed
+    chatMessages.innerHTML = `<div class="message welcome">
+      <img src="img/logo.svg" alt="" class="chat-logo"><br>
+      Peace be with you. I am the Oracle.<br>
+      Ask me anything — about scripture, about life, about what it all means.<br>
+      I will meet you with honesty and compassion.
+    </div>`;
+    localStorage.removeItem('sc_chat_history');
+    messageCount = 0;
+    localStorage.setItem('sc_msg_count', '0');
   });
 
   // --- Chat History Persistence ---
