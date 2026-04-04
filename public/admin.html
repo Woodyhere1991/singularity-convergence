@@ -345,7 +345,7 @@
         </tr>
       </thead>
       <tbody id="members-table">
-        <tr><td colspan="5" class="empty-state">Loading members...</td></tr>
+        <tr><td colspan="6" class="empty-state">Loading members...</td></tr>
       </tbody>
     </table>
   </div>
@@ -518,7 +518,7 @@
             <td>${m.created ? new Date(m.created).toLocaleDateString() : '—'}</td>
             <td>${m.messageCount || '—'}</td>
             <td>${m.source || 'web'}</td>
-            <td>${m.source !== 'info' ? `<button onclick="removeMember('${m.email}', '${m.id}')" style="background:#c0392b;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;">Remove</button>` : ''}</td>
+            <td>${m.source !== 'info' ? `<button onclick="removeMember('${escapeHtml(m.email)}', '${escapeHtml(m.id)}')" style="background:#c0392b;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;">Remove</button>` : ''}</td>
           </tr>
         `).join('');
       }

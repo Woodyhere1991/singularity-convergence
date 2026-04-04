@@ -626,6 +626,9 @@ export default async (req, context) => {
 
   // --- Admin: Log email Oracle interaction (called by n8n) ---
   if (path === "/admin/log-email" && req.method === "POST") {
+    if (!verifyAdmin(req)) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers });
+    }
     try {
       const body = await req.json();
       const { sender, question, response, tier, timestamp } = body;
