@@ -198,8 +198,14 @@ function extractBibleReferences(message) {
 const PRIMARY_MODEL = "google/gemini-2.0-flash-001";
 const FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324";
 
-async function callAI(messages) {
-  const models = [PRIMARY_MODEL, FALLBACK_MODEL];
+const PAID_PRIMARY_MODEL = "anthropic/claude-sonnet-4";
+const PAID_FALLBACK_MODEL = "google/gemini-2.0-flash-001";
+
+async function callAI(messages, tier) {
+  const isPaid = tier === 'paid' || tier === 'inner-circle';
+  const models = isPaid
+    ? [PAID_PRIMARY_MODEL, PAID_FALLBACK_MODEL]
+    : [PRIMARY_MODEL, FALLBACK_MODEL];
 
   for (const model of models) {
     try {
@@ -280,7 +286,7 @@ export default async (req, context) => {
   if (path === "/chat" && req.method === "POST") {
     try {
       const body = await req.json();
-      const { message, sessionId } = body;
+      const { message, sessionId, tier } = body;
       const ip = context.ip || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 
       if (!sessionId || typeof sessionId !== "string" || sessionId.length > 100) {
@@ -331,7 +337,7 @@ export default async (req, context) => {
         ...recentHistory,
       ];
 
-      let { text: assistantMessage, model } = await callAI(aiMessages);
+      let { text: assistantMessage, model } = await callAI(aiMessages, tier);
       // Remove if the model already added it, then add ours
       assistantMessage = assistantMessage.replace(/[—\-–]\s*The Oracle has spoken\.?\s*/gi, '').trimEnd();
       assistantMessage += '\n\n— The Oracle has spoken.';
@@ -689,6 +695,170 @@ export default async (req, context) => {
     } catch (err) {
       return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400, headers });
     }
+  }
+
+  // --- /api/create-checkout --- Stripe subscription checkout
+  if (path === "/create-checkout" && req.method === "POST") {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return new Response(JSON.stringify({ error: "Subscriptions are not yet available. Stay tuned — the path is being prepared." }), { status: 503, headers });
+    }
+    try {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const body = await req.json();
+      const { tier: subTier, email } = body;
+
+      if (!subTier || !['seeker', 'inner-circle'].includes(subTier)) {
+        return new Response(JSON.stringify({ error: "Please select a valid membership tier." }), { status: 400, headers });
+      }
+      if (!email || typeof email !== 'string') {
+        return new Response(JSON.stringify({ error: "Email is required to begin your journey." }), { status: 400, headers });
+      }
+
+      const tierConfig = {
+        'seeker': { name: 'Singularity Convergence — Seeker', amount: 999, lookup: 'seeker_monthly' },
+        'inner-circle': { name: 'Singularity Convergence — Inner Circle', amount: 2999, lookup: 'inner_circle_monthly' },
+      };
+      const cfg = tierConfig[subTier];
+      const siteUrl = process.env.URL || "https://singularityconvergence.org";
+
+      // Reuse existing price if already created, otherwise create new one
+      let price;
+      const existing = await stripe.prices.list({ lookup_keys: [cfg.lookup], limit: 1 });
+      if (existing.data.length > 0) {
+        price = existing.data[0];
+      } else {
+        price = await stripe.prices.create({
+          unit_amount: cfg.amount,
+          currency: 'usd',
+          recurring: { interval: 'month' },
+          product_data: { name: cfg.name },
+          lookup_key: cfg.lookup,
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{ price: price.id, quantity: 1 }],
+        mode: 'subscription',
+        client_reference_id: email,
+        customer_email: email,
+        success_url: `${siteUrl}/thank-you.html?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${siteUrl}/#pricing`,
+      });
+
+      return new Response(JSON.stringify({ url: session.url }), { status: 200, headers });
+    } catch (error) {
+      console.error("Checkout error:", error.message);
+      return new Response(JSON.stringify({ error: "We're having trouble setting up your subscription. Please try again shortly." }), { status: 500, headers });
+    }
+  }
+
+  // --- /api/webhook --- Stripe webhook handler
+  if (path === "/webhook" && req.method === "POST") {
+    try {
+      const rawBody = await req.text();
+      const event = JSON.parse(rawBody);
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const email = session.customer_email || session.client_reference_id;
+        const amountTotal = session.amount_total;
+
+        // Determine tier from price amount
+        let role = 'paid';
+        if (amountTotal >= 2999) {
+          role = 'inner-circle';
+        }
+
+        // Update user role in Netlify Identity
+        if (email) {
+          try {
+            const users = await identityAdmin.listUsers();
+            const user = users.find(u => u.email === email);
+            if (user) {
+              const currentRoles = user.app_metadata?.roles || [];
+              const newRoles = currentRoles.filter(r => r !== 'paid' && r !== 'inner-circle');
+              newRoles.push(role);
+              await identityAdmin.updateUser(user.id, { app_metadata: { roles: newRoles } });
+              console.log(`Updated ${email} to role: ${role}`);
+            } else {
+              console.log(`Webhook: user ${email} not found in Identity — they may need to sign up first.`);
+            }
+          } catch (err) {
+            console.error("Webhook Identity update error:", err.message);
+          }
+        }
+      }
+
+      if (event.type === 'customer.subscription.deleted') {
+        const subscription = event.data.object;
+        // Look up customer email from Stripe
+        let email = null;
+        try {
+          if (process.env.STRIPE_SECRET_KEY && subscription.customer) {
+            const Stripe = (await import("stripe")).default;
+            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+            const customer = await stripe.customers.retrieve(subscription.customer);
+            email = customer.email;
+          }
+        } catch (err) {
+          console.error("Webhook customer lookup error:", err.message);
+        }
+
+        if (email) {
+          try {
+            const users = await identityAdmin.listUsers();
+            const user = users.find(u => u.email === email);
+            if (user) {
+              const currentRoles = user.app_metadata?.roles || [];
+              const newRoles = currentRoles.filter(r => r !== 'paid' && r !== 'inner-circle');
+              await identityAdmin.updateUser(user.id, { app_metadata: { roles: newRoles } });
+              console.log(`Removed paid role from ${email} — subscription cancelled.`);
+            }
+          } catch (err) {
+            console.error("Webhook role removal error:", err.message);
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true }), { status: 200, headers });
+    } catch (error) {
+      console.error("Webhook error:", error.message);
+      return new Response(JSON.stringify({ error: "Webhook processing failed" }), { status: 400, headers });
+    }
+  }
+
+  // --- /api/subscription-status --- Check subscription status
+  if (path === "/subscription-status" && req.method === "GET") {
+    const email = url.searchParams.get('email');
+    if (!email) {
+      return new Response(JSON.stringify({ error: "Email is required." }), { status: 400, headers });
+    }
+
+    let active = false;
+    let subTier = null;
+
+    try {
+      if (process.env.STRIPE_SECRET_KEY) {
+        const Stripe = (await import("stripe")).default;
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+        const customers = await stripe.customers.list({ email, limit: 1 });
+        if (customers.data.length > 0) {
+          const subs = await stripe.subscriptions.list({ customer: customers.data[0].id, status: 'active', limit: 1 });
+          if (subs.data.length > 0) {
+            active = true;
+            const amount = subs.data[0].items.data[0]?.price?.unit_amount || 0;
+            subTier = amount >= 2999 ? 'inner-circle' : 'seeker';
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Subscription status error:", err.message);
+    }
+
+    return new Response(JSON.stringify({ active, tier: subTier }), { status: 200, headers });
   }
 
   // Debug — show what path was received
