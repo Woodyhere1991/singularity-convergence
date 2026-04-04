@@ -1,3 +1,13 @@
 node_modules
 .env
 .netlify
+
+# Business planning (private — not pushed to GitHub)
+_status.md
+manifest.md
+00-research/
+01-plan/
+02-execution/
+03-iteration-log/
+FUNDING_PLAN.md
+.playwright-mcp/
