@@ -369,6 +369,74 @@ export default async (req, context) => {
     }
   }
 
+  // --- /api/council ---
+  if (path === "/council" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const { message, sessionId, tier } = body;
+      const ip = context.ip || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+      // Inner Circle only
+      if (tier !== "inner-circle") {
+        return new Response(JSON.stringify({ error: "The Council is available to Inner Circle members only. Upgrade to unlock four perspectives on every question." }), { status: 403, headers });
+      }
+
+      if (!sessionId || typeof sessionId !== "string" || sessionId.length > 100) {
+        return new Response(JSON.stringify({ error: "Please refresh the page and try again." }), { status: 400, headers });
+      }
+
+      const cleanMessage = sanitizeMessage(message);
+      if (!cleanMessage) {
+        return new Response(JSON.stringify({ error: "The Council is listening — please share what's on your mind." }), { status: 400, headers });
+      }
+
+      // Rate limit
+      const rateCheck = checkRateLimit(ip);
+      if (!rateCheck.allowed) {
+        return new Response(JSON.stringify({ error: rateCheck.reason, retryAfter: rateCheck.retryAfter }), { status: 429, headers });
+      }
+
+      // Injection check
+      if (detectInjection(cleanMessage)) {
+        return new Response(JSON.stringify({
+          response: "The Council senses you're testing our boundaries. We welcome curiosity, but we serve those seeking genuine wisdom. What's really on your mind?",
+        }), { status: 200, headers });
+      }
+
+      // Call The Council n8n workflow
+      const councilResponse = await fetch("https://n8n.srv1178347.hstgr.cloud/webhook/council", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: cleanMessage }),
+      });
+
+      if (!councilResponse.ok) {
+        throw new Error(`Council workflow returned ${councilResponse.status}`);
+      }
+
+      const councilData = await councilResponse.json();
+      const assistantMessage = councilData.council_response;
+
+      // Log for admin panel
+      oracleLog.push({
+        timestamp: new Date().toISOString(),
+        sessionId,
+        question: cleanMessage,
+        answer: assistantMessage,
+        model: "council (4x claude-sonnet via n8n)",
+      });
+      if (oracleLog.length > 500) oracleLog.shift();
+
+      const tracker = getOrCreateTracker(ip);
+      const remaining = RATE_LIMITS.messagesPerDay - tracker.dailyCount;
+
+      return new Response(JSON.stringify({ response: assistantMessage, model: "council", remaining }), { status: 200, headers });
+    } catch (error) {
+      console.error("Council error:", error);
+      return new Response(JSON.stringify({ error: "The Council is in deliberation. Please try again in a moment — wisdom from four perspectives takes time." }), { status: 500, headers });
+    }
+  }
+
   // --- /api/bible/:reference ---
   if (path.startsWith("/bible/") && req.method === "GET") {
     const ref = decodeURIComponent(path.replace("/bible/", ""));

@@ -1301,6 +1301,11 @@
         I will meet you with honesty and compassion.
       </div>
     </div>
+    <div id="council-toggle" style="display:none; text-align:center; margin-bottom:10px;">
+      <button id="council-toggle-btn" style="background:transparent; border:1px solid var(--gold); color:var(--gold); padding:6px 16px; border-radius:20px; cursor:pointer; font-size:0.85rem; font-family:Georgia,serif; transition:all 0.3s ease;">
+        Switch to The Council
+      </button>
+    </div>
     <div id="chat-input-area">
       <input type="text" id="chat-input" placeholder="Ask the Oracle anything..." autocomplete="off" maxlength="1000" aria-label="Ask the Oracle a question">
       <button id="send-btn">Send</button>
@@ -1689,6 +1694,8 @@
   let messageCount = parseInt(localStorage.getItem('sc_msg_count') || '0');
   let currentUser = null;
   let isPaidMember = false;
+  let isInnerCircle = false;
+  let councilMode = false;
 
   // Reset daily count at midnight
   const today = new Date().toDateString();
@@ -1712,15 +1719,19 @@
   // Check if already logged in
   currentUser = netlifyIdentity.currentUser();
   if (currentUser) {
-    isPaidMember = currentUser.app_metadata?.roles?.includes('paid') || false;
+    isPaidMember = currentUser.app_metadata?.roles?.includes('paid') || currentUser.app_metadata?.roles?.includes('inner-circle') || false;
+    isInnerCircle = currentUser.app_metadata?.roles?.includes('inner-circle') || false;
     showLoggedIn(currentUser);
+    if (isInnerCircle) showCouncilToggle();
     loadChatHistory();
   }
 
   netlifyIdentity.on('login', (user) => {
     currentUser = user;
-    isPaidMember = user.app_metadata?.roles?.includes('paid') || false;
+    isPaidMember = user.app_metadata?.roles?.includes('paid') || user.app_metadata?.roles?.includes('inner-circle') || false;
+    isInnerCircle = user.app_metadata?.roles?.includes('inner-circle') || false;
     showLoggedIn(user);
+    if (isInnerCircle) showCouncilToggle();
     loginOverlay.classList.remove('visible');
     saveChatHistory();
     netlifyIdentity.close();
@@ -1738,6 +1749,9 @@
   netlifyIdentity.on('logout', () => {
     currentUser = null;
     isPaidMember = false;
+    isInnerCircle = false;
+    councilMode = false;
+    hideCouncilToggle();
     userBar.classList.remove('visible');
     messageCount = 0;
     localStorage.setItem('sc_msg_count', '0');
@@ -1838,6 +1852,34 @@
   }
 
   // --- Send Message ---
+  // --- Council toggle ---
+  const councilToggle = document.getElementById('council-toggle');
+  const councilToggleBtn = document.getElementById('council-toggle-btn');
+
+  function showCouncilToggle() {
+    councilToggle.style.display = 'block';
+  }
+  function hideCouncilToggle() {
+    councilToggle.style.display = 'none';
+  }
+
+  councilToggleBtn.addEventListener('click', () => {
+    councilMode = !councilMode;
+    if (councilMode) {
+      councilToggleBtn.textContent = 'Switch to The Oracle';
+      councilToggleBtn.style.background = 'var(--gold)';
+      councilToggleBtn.style.color = '#0a0a0f';
+      chatInput.placeholder = 'Ask The Council anything...';
+      document.querySelector('.chat-wrapper h2').textContent = 'The Council';
+    } else {
+      councilToggleBtn.textContent = 'Switch to The Council';
+      councilToggleBtn.style.background = 'transparent';
+      councilToggleBtn.style.color = 'var(--gold)';
+      chatInput.placeholder = 'Ask the Oracle anything...';
+      document.querySelector('.chat-wrapper h2').textContent = 'The Oracle';
+    }
+  });
+
   async function sendMessage() {
     const message = chatInput.value.trim();
     if (!message || rateLimited) return;
@@ -1871,13 +1913,13 @@
 
     const typing = document.createElement('div');
     typing.className = 'typing-indicator';
-    typing.textContent = 'The Oracle is reflecting...';
+    typing.textContent = councilMode ? 'The Council is deliberating...' : 'The Oracle is reflecting...';
     chatMessages.appendChild(typing);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     try {
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 30000);
+      const fetchTimeout = setTimeout(() => controller.abort(), councilMode ? 60000 : 30000);
 
       const fetchHeaders = { 'Content-Type': 'application/json' };
       // Add auth token if logged in
@@ -1888,10 +1930,13 @@
         } catch {}
       }
 
-      const res = await fetch('/api/chat', {
+      const endpoint = councilMode ? '/api/council' : '/api/chat';
+      const tier = isInnerCircle ? 'inner-circle' : (isPaidMember ? 'paid' : 'free');
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: fetchHeaders,
-        body: JSON.stringify({ message, sessionId: getSessionId() }),
+        body: JSON.stringify({ message, sessionId: getSessionId(), tier }),
         signal: controller.signal,
       });
 
